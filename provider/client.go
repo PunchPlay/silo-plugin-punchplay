@@ -226,7 +226,7 @@ func normalizeBaseURL(raw string) (string, error) {
 	}
 	host := parsed.Hostname()
 	local := host == "localhost" || host == "127.0.0.1" || host == "::1" || strings.HasSuffix(host, ".localhost")
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && local) {
+	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !local) {
 		return "", fmt.Errorf("base URL must use https")
 	}
 	return strings.TrimRight(parsed.Scheme+"://"+parsed.Host+parsed.Path, "/"), nil

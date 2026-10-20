@@ -308,7 +308,9 @@ func TestLongSiloIDsFitPunchPlaysKeys(t *testing.T) {
 	if key := itemKey("silo-event:", long); len(key) > maxItemKey || !strings.HasPrefix(key, "silo-event:sha256:") {
 		t.Fatalf("key = %q", key)
 	}
-	if itemKey("silo-event:", long) != itemKey("silo-event:", long) {
+	// A retry must produce the same key, or PunchPlay would log the event twice.
+	first, again := itemKey("silo-event:", long), itemKey("silo-event:", long)
+	if first != again {
 		t.Fatal("keys must be stable")
 	}
 }
