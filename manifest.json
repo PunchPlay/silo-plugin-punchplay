@@ -1,0 +1,85 @@
+{
+  "plugin_id": "tv.punchplay.watchprovider",
+  "version": "0.1.0",
+  "checksum": "__CHECKSUM__",
+  "silo_api_version": "v1",
+  "supported_platforms": [
+    { "os": "darwin", "arch": "arm64" },
+    { "os": "linux", "arch": "amd64" },
+    { "os": "linux", "arch": "arm64" }
+  ],
+  "global_config_schema": [
+    {
+      "key": "api",
+      "title": "PunchPlay API (advanced)",
+      "description": "Leave both fields empty to use PunchPlay's own Silo app at punchplay.tv. Only change them to test against another PunchPlay server.",
+      "json_schema": "{\"type\":\"object\",\"properties\":{\"client_id\":{\"type\":\"string\"},\"base_url\":{\"type\":\"string\"}},\"additionalProperties\":false}",
+      "required": false,
+      "admin_form": {
+        "submit_label": "Save PunchPlay API settings",
+        "fields": [
+          {
+            "key": "client_id",
+            "label": "Client ID",
+            "description": "Optional. The client ID of a public device app registered on the PunchPlay server below. Profiles connected through one client ID stop working if it changes.",
+            "control": "ADMIN_FORM_CONTROL_TEXT",
+            "required": false
+          },
+          {
+            "key": "base_url",
+            "label": "API base URL",
+            "description": "Optional. Defaults to https://punchplay.tv.",
+            "control": "ADMIN_FORM_CONTROL_TEXT",
+            "required": false
+          }
+        ]
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "type": "watch_sync_provider.v1",
+      "id": "punchplay",
+      "display_name": "PunchPlay",
+      "description": "Two-way watch history, ratings, watchlist, favourites and dropped shows, plus resume progress and live scrobbling for PunchPlay, anime included.",
+      "watch_sync_provider": {
+        "auth_methods": ["WATCH_SYNC_AUTH_METHOD_DEVICE_CODE"],
+        "import_watched": true,
+        "import_progress": true,
+        "export_watched": true,
+        "export_unwatched": true,
+        "import_favorites": true,
+        "export_favorites": true,
+        "remove_favorites": true,
+        "import_watchlist": true,
+        "export_watchlist": true,
+        "remove_watchlist": true,
+        "scrobble_playback": true,
+        "import_ratings": true,
+        "export_ratings": true,
+        "sync_dropped": true,
+        "supported_media_types": [
+          "WATCH_SYNC_MEDIA_TYPE_MOVIE",
+          "WATCH_SYNC_MEDIA_TYPE_EPISODE",
+          "WATCH_SYNC_MEDIA_TYPE_SERIES"
+        ],
+        "external_id_namespaces": ["tmdb", "imdb", "tvdb"],
+        "max_batch_size": 100
+      }
+    }
+  ],
+  "category": "Watch Providers",
+  "presentation": {
+    "display_name": "PunchPlay Watch Provider",
+    "summary": "Sync Silo watch history, ratings, watchlist, favourites and dropped shows with PunchPlay, with live scrobbling.",
+    "description_markdown": "Imports watched movies and episodes, resume progress, the Watchlist, favourites, dropped shows, and movie, series and episode ratings from PunchPlay, anime included. Exports watched and unwatched titles, every rewatch as its own play, ratings, favourites, Watchlist changes and dropped shows, and forwards live playback start, pause and stop, so PunchPlay shows what you are watching while you watch it.",
+    "setup_markdown": "1. Install the plugin. No API keys are needed.\n2. Connect each Silo profile from its watch-provider settings. Silo shows a code to enter at [punchplay.tv/link](https://punchplay.tv/link).\n3. Titles PunchPlay cannot match yet are listed in PunchPlay under Settings, and are retried automatically.",
+    "homepage_url": "https://punchplay.tv",
+    "source_url": "https://github.com/PunchPlay/silo-plugin-punchplay",
+    "support_url": "https://github.com/PunchPlay/silo-plugin-punchplay/issues",
+    "changelog_url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases",
+    "publisher_name": "PunchPlay",
+    "publisher_url": "https://punchplay.tv",
+    "license_spdx": "Apache-2.0"
+  }
+}

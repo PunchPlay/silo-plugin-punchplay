@@ -1,0 +1,10 @@
+/dist/
+/plugin
+
+# Local agent/tooling state
+/.agents/
+/.claude/
+
+# Local workspace used to build against an unreleased SDK
+/go.work
+/go.work.sum
