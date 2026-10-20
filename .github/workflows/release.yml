@@ -26,6 +26,13 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tag="${GITHUB_REF_NAME}"
             version="${tag#v}"
+            # The binary reports manifest.json's version, and Silo refuses a
+            # download whose version differs from the catalog's.
+            manifest_version=$(jq -r .version manifest.json)
+            if [ "$manifest_version" != "$version" ]; then
+              echo "::error::manifest.json says ${manifest_version}, but the tag is ${tag}. Bump manifest.json first."
+              exit 1
+            fi
           else
             # Auto-increment patch from latest tag.
             latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
@@ -140,3 +147,49 @@ jobs:
             release/plugin-darwin-arm64
             release/checksums.txt
           generate_release_notes: true
+
+  # Publishes repository.json on main, the URL Silo admins add under
+  # Admin > Integrations > Plugins > Repositories:
+  # https://raw.githubusercontent.com/PunchPlay/silo-plugin-punchplay/main/repository.json
+  repository-index:
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build the repository index from the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          GOWORK: off
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" > "${RUNNER_TEMP}/release.json"
+          # The tag's manifest describes the released binaries, even if main
+          # has moved on since.
+          git show "${TAG}:manifest.json" > "${RUNNER_TEMP}/manifest.json"
+          go run ./cmd/repository-index \
+            -manifest "${RUNNER_TEMP}/manifest.json" \
+            -release "${RUNNER_TEMP}/release.json" \
+            -out repository.json
+
+      - name: Commit repository.json to main
+        env:
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          if git diff --quiet -- repository.json && git ls-files --error-unmatch repository.json >/dev/null 2>&1; then
+            echo "repository.json is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add repository.json
+          git commit -m "chore: list ${TAG} in repository.json"
+          git pull --rebase origin main
+          git push origin HEAD:main

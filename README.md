@@ -2,9 +2,21 @@
 
 Syncs a [Silo](https://siloserver.org) media server with [PunchPlay](https://punchplay.tv), both ways, with live scrobbling. Built on [silo-plugin-sdk](https://github.com/Silo-Server/silo-plugin-sdk) v0.28.0 as a `watch_sync_provider.v1` plugin.
 
+## Install
+
+**From the PunchPlay repository (recommended, gets updates).** In Silo, open **Admin > Integrations > Plugins**, choose **Add repository**, and enter:
+
+```
+https://raw.githubusercontent.com/PunchPlay/silo-plugin-punchplay/main/repository.json
+```
+
+Then find **PunchPlay Watch Provider** in the **Catalog** tab and choose **Install**. New releases show up there as updates.
+
+**From a file.** Download the binary for your server from the [latest release](https://github.com/PunchPlay/silo-plugin-punchplay/releases/latest) (`plugin-linux-amd64` for most Linux servers and NAS units, `plugin-linux-arm64` for ARM boards and Docker on Apple Silicon, `plugin-darwin-arm64` for Silo running natively on a Mac), then use **Install from a file** on the same page.
+
 ## Setup
 
-1. Install the plugin on your Silo server. It needs no API keys or admin settings.
+1. Install the plugin as above. It needs no API keys or admin settings.
 2. Connect each Silo profile from its watch-provider settings. Silo shows a code; enter it at [punchplay.tv/link](https://punchplay.tv/link).
 
 That's it. The plugin signs in through PunchPlay's own public Silo app, so nothing secret ships in the binary.
@@ -53,7 +65,7 @@ To test against a local PunchPlay, set the plugin's advanced settings in Silo: *
 
 ## Releases
 
-Push a `vX.Y.Z` tag, or run the Release workflow to bump the patch version. It builds `linux/amd64`, `linux/arm64` and `darwin/arm64` and publishes them with checksums.
+Run the Release workflow to bump the patch version, or set `version` in `manifest.json` and push a matching `vX.Y.Z` tag (the workflow refuses a tag that differs from the manifest). It builds `linux/amd64`, `linux/arm64` and `darwin/arm64`, publishes them with checksums, and then updates `repository.json` on `main` so Silo servers see the new version.
 
 ## Licence
 
