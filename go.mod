@@ -2,6 +2,8 @@ module github.com/PunchPlay/silo-plugin-punchplay
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	github.com/Silo-Server/silo-plugin-sdk v0.28.0
 	golang.org/x/time v0.16.0
