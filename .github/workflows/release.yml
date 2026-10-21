@@ -148,6 +148,28 @@ jobs:
             release/checksums.txt
           generate_release_notes: true
 
+      # Tells a Silo plugin catalog about the release, once one lists this
+      # plugin. Set the repository variable SILO_CATALOG_REPO to the catalog
+      # (Silo-Server/silo-plugins or Silo-Community/silo-plugins) and the secret
+      # SILO_PLUGINS_DISPATCH_TOKEN to the token its maintainers provide.
+      - name: Notify the Silo plugin catalog
+        env:
+          DISPATCH_TOKEN: ${{ secrets.SILO_PLUGINS_DISPATCH_TOKEN }}
+          CATALOG_REPO: ${{ vars.SILO_CATALOG_REPO }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          if [ -z "$DISPATCH_TOKEN" ] || [ -z "$CATALOG_REPO" ]; then
+            echo "No Silo catalog is configured; skipping catalog dispatch."
+            exit 0
+          fi
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${CATALOG_REPO}/dispatches" \
+            -d "$(printf '{"event_type":"plugin_release_published","client_payload":{"repo":"%s","tag":"%s"}}' "${GITHUB_REPOSITORY}" "${TAG}")"
+
   # Publishes repository.json on main, the URL Silo admins add under
   # Admin > Integrations > Plugins > Repositories:
   # https://raw.githubusercontent.com/PunchPlay/silo-plugin-punchplay/main/repository.json
