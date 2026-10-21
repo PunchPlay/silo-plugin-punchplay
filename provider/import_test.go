@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	pluginv1 "github.com/Silo-Server/silo-plugin-sdk/pkg/pluginproto/silo/plugin/v1"
@@ -67,13 +68,14 @@ func TestFirstSyncReadsASnapshotAndEndsAtTheHighWaterMark(t *testing.T) {
 		},
 	}))
 
-	first := list(t, server, api, "", "", kindWatched)
-	if first.GetFault() != nil || !first.GetCompleteSnapshot() || first.GetNextCursor() != "" || first.GetNextPageToken() == "" {
-		t.Fatalf("first page = %v", first)
+	// Both history reads fit one page, so the traversal ends in one call.
+	page := list(t, server, api, "", "", kindWatched)
+	if page.GetFault() != nil || !page.GetCompleteSnapshot() || page.GetNextPageToken() != "" || page.GetNextCursor() != "v1:hw-1" {
+		t.Fatalf("page = %v", page)
 	}
-	items := first.GetItems()
-	if len(items) != 2 {
-		t.Fatalf("items = %v, want The Matrix merged into one and One Piece", items)
+	items := page.GetItems()
+	if len(items) != 3 {
+		t.Fatalf("items = %v, want The Matrix merged into one, One Piece, and movie 604", items)
 	}
 	matrix := items[0]
 	if matrix.GetMedia().GetExternalIds()["tmdb"] != "603" || matrix.GetWatched().GetPlayCount() != 1 ||
@@ -90,13 +92,66 @@ func TestFirstSyncReadsASnapshotAndEndsAtTheHighWaterMark(t *testing.T) {
 	if items[1].GetWatched().GetLastWatchedAt() != nil {
 		t.Fatalf("placeholder date leaked: %v", items[1].GetWatched().GetLastWatchedAt())
 	}
-	if len(first.GetWarnings()) != 1 {
-		t.Fatalf("warnings = %v, want the identity-less row counted", first.GetWarnings())
+	if got := page.GetWarnings(); len(got) != 1 || got[0] != "Skipped 1 PunchPlay watches without a TMDB or TVDB ID" {
+		t.Fatalf("warnings = %v", got)
 	}
+	// Reads ask for PunchPlay's largest page, whatever Silo's page size.
+	for _, request := range api.recorded() {
+		if request.path == "/me/sync/snapshot" {
+			if query, _ := url.ParseQuery(request.query); query.Get("limit") != "500" {
+				t.Fatalf("snapshot limit = %q, want 500", query.Get("limit"))
+			}
+		}
+	}
+}
 
-	second := list(t, server, api, "", first.GetNextPageToken(), kindWatched)
-	if second.GetNextCursor() != "v1:hw-1" || second.GetNextPageToken() != "" || !second.GetCompleteSnapshot() || len(second.GetItems()) != 1 {
-		t.Fatalf("second page = %v", second)
+func TestRowsBeyondSilosPageAreCarriedNotReread(t *testing.T) {
+	api := newFakeAPI(t)
+	server := newTestServer(api)
+	api.handle("GET /me/sync/changes", jsonReply(http.StatusOK, map[string]any{"changes": []any{}, "nextCursor": "hw", "resetRequired": true}))
+	rows := make([]any, 0, 251)
+	for i := 1; i <= 250; i++ {
+		rows = append(rows, map[string]any{"id": i, "type": "movie", "mediaSource": "tmdb", "tmdbId": 10_000 + i, "watchedAt": "2026-01-01T00:00:00Z"})
+	}
+	rows = append(rows, map[string]any{"id": 251, "type": "movie", "mediaSource": "tmdb"})
+	snapshots := 0
+	api.handle("GET /me/sync/snapshot", func(w http.ResponseWriter, _ *http.Request) {
+		snapshots++
+		writeJSON(w, http.StatusOK, map[string]any{"items": rows, "hasMore": false, "nextAfter": nil})
+	})
+
+	var pages []*pluginv1.WatchSyncListRemoteStateResponse
+	token := ""
+	for len(pages) < 10 {
+		page := list(t, server, api, "", token, kindWatched)
+		if page.GetFault() != nil {
+			t.Fatalf("fault = %v", page.GetFault())
+		}
+		pages = append(pages, page)
+		if page.GetNextPageToken() == "" {
+			break
+		}
+		if len(page.GetWarnings()) != 0 {
+			t.Fatalf("warnings arrived before the last page: %v", page.GetWarnings())
+		}
+		token = page.GetNextPageToken()
+	}
+	if len(pages) != 3 || len(pages[0].GetItems()) != 100 || len(pages[1].GetItems()) != 100 || len(pages[2].GetItems()) != 50 {
+		t.Fatalf("pages = %d with %d/%d/%d items", len(pages), len(pages[0].GetItems()), len(pages[1].GetItems()), len(pages[len(pages)-1].GetItems()))
+	}
+	if snapshots != 1 {
+		t.Fatalf("snapshot reads = %d, want 1: carried rows must not be read again", snapshots)
+	}
+	last := pages[2]
+	if last.GetNextCursor() != "v1:hw" || len(last.GetWarnings()) != 1 || last.GetWarnings()[0] != "Skipped 1 PunchPlay watches without a TMDB or TVDB ID" {
+		t.Fatalf("last page = cursor %q warnings %v", last.GetNextCursor(), last.GetWarnings())
+	}
+	if pages[2].GetItems()[49].GetMedia().GetExternalIds()["tmdb"] != "10250" {
+		t.Fatalf("rows came back out of order")
+	}
+	// The page token stays a reasonable size even carrying 150 rows.
+	if size := len(pages[0].GetNextPageToken()); size > 64<<10 {
+		t.Fatalf("page token is %d bytes", size)
 	}
 }
 
@@ -188,36 +243,60 @@ func TestLaterSyncsFollowTheChangesFeed(t *testing.T) {
 		}
 	})
 
-	first := list(t, server, api, "v1:c-1", "", kindRating, kindFavorite, kindWatchlist)
-	if first.GetCompleteSnapshot() || first.GetNextPageToken() == "" || first.GetNextCursor() != "" {
-		t.Fatalf("first = %v", first)
+	// Both feed pages fit Silo's page, so they arrive together.
+	page := list(t, server, api, "v1:c-1", "", kindRating, kindFavorite, kindWatchlist)
+	if page.GetFault() != nil || page.GetCompleteSnapshot() || page.GetNextPageToken() != "" || page.GetNextCursor() != "v1:c-3" {
+		t.Fatalf("page = %v", page)
 	}
-	if len(first.GetItems()) != 2 {
-		t.Fatalf("items = %v", first.GetItems())
+	items := page.GetItems()
+	if len(items) != 4 {
+		t.Fatalf("items = %v", items)
 	}
-	cleared := first.GetItems()[0]
+	cleared := items[0]
 	if !cleared.GetRating().GetRemoved() || !cleared.GetFavorite().GetRemoved() || cleared.GetMedia() == nil {
 		t.Fatalf("cleared = %v, want rating and favourite tombstones", cleared)
 	}
-	deleted := first.GetItems()[1]
+	deleted := items[1]
 	if deleted.GetProviderItemKey() != "interaction:2" || deleted.GetMedia() != nil || !deleted.GetRating().GetRemoved() {
 		t.Fatalf("deleted = %v", deleted)
 	}
-
-	second := list(t, server, api, "v1:c-1", first.GetNextPageToken(), kindRating, kindFavorite, kindWatchlist)
-	if second.GetNextCursor() != "v1:c-3" || len(second.GetItems()) != 2 {
-		t.Fatalf("second = %v", second)
-	}
-	if !second.GetItems()[0].GetWatchlist().GetRemoved() || second.GetItems()[1].GetWatchlist().GetRemoved() {
-		t.Fatalf("watchlist changes = %v", second.GetItems())
+	if !items[2].GetWatchlist().GetRemoved() || items[3].GetWatchlist().GetRemoved() {
+		t.Fatalf("watchlist changes = %v", items[2:])
 	}
 	// The cursor travels escaped, never re-encoded by hand.
 	for _, request := range api.recorded() {
 		if request.path == "/me/sync/changes" {
-			if _, err := url.ParseQuery(request.query); err != nil {
+			query, err := url.ParseQuery(request.query)
+			if err != nil {
 				t.Fatalf("query %q: %v", request.query, err)
 			}
+			if query.Get("limit") != "500" {
+				t.Fatalf("changes limit = %q, want 500", query.Get("limit"))
+			}
 		}
+	}
+}
+
+func TestWarningsCountEachReasonOnce(t *testing.T) {
+	api := newFakeAPI(t)
+	server := newTestServer(api)
+	api.handle("GET /me/sync/changes", jsonReply(http.StatusOK, map[string]any{"changes": []any{}, "nextCursor": "hw", "resetRequired": true}))
+	api.handle("GET /me/sync/snapshot", snapshotRoute(t, map[string]map[string]map[string]any{
+		"interaction": {"0": {"hasMore": false, "items": []any{
+			map[string]any{"id": 1, "kind": "show", "scope": "season", "mediaSource": "tmdb", "tmdbId": 1399, "season": 2, "rating": 9},
+			map[string]any{"id": 2, "kind": "show", "scope": "season", "mediaSource": "tmdb", "tmdbId": 1399, "season": 3, "rating": 7},
+			map[string]any{"id": 3, "kind": "movie", "scope": "title", "rating": 8},
+			"not a record",
+		}}},
+	}))
+	page := list(t, server, api, "", "", kindRating)
+	want := []string{
+		"Skipped 1 PunchPlay ratings, favourites or dropped shows without a TMDB or TVDB ID",
+		"Skipped 1 PunchPlay records the plugin couldn't read",
+		"Skipped 2 PunchPlay season ratings, which Silo doesn't store",
+	}
+	if got := page.GetWarnings(); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("warnings = %q", got)
 	}
 }
 

@@ -233,7 +233,7 @@ func (s *Server) postBulk(ctx context.Context, acct account, path, operation str
 	key := idempotencyKey(operation, payload)
 	for attempt := 0; ; attempt++ {
 		var out bulkResponse
-		resp, fault := s.api.request(ctx, acct, http.MethodPost, path, map[string]string{"Idempotency-Key": key}, payload, &out)
+		resp, fault := s.api.request(ctx, acct, classBulk, http.MethodPost, path, map[string]string{"Idempotency-Key": key}, payload, &out)
 		switch {
 		case fault != nil:
 			return out, fault
@@ -427,7 +427,7 @@ func (s *Server) unwatch(ctx context.Context, acct account, event *pluginv1.Watc
 		return rejected(id, invalidRequestFault("PunchPlay unwatches movies and episodes only")), nil
 	}
 	var out removedResponse
-	_, fault := s.api.call(ctx, acct, http.MethodDelete, path, nil, nil, &out)
+	_, fault := s.api.call(ctx, acct, classWrite, http.MethodDelete, path, nil, nil, &out)
 	if fault != nil {
 		if connectionWide(fault) {
 			return nil, fault
@@ -505,7 +505,7 @@ func (s *Server) scrobble(ctx context.Context, acct account, event *pluginv1.Wat
 	}
 
 	var out playbackResponse
-	resp, fault := s.api.request(ctx, acct, http.MethodPost, "/playback/"+action, nil, payload, &out)
+	resp, fault := s.api.request(ctx, acct, classPlayback, http.MethodPost, "/playback/"+action, nil, payload, &out)
 	switch {
 	case fault != nil:
 		return resultFor(id, fault), nil

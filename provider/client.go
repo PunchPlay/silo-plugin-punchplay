@@ -29,13 +29,24 @@ const (
 	// PunchPlay sends Retry-After with every 429. Without one, a minute
 	// clears any of its per-minute buckets.
 	defaultRetryAfter = time.Minute
+
+	// A 429 is waited out in place when the wait is this short, at most
+	// maxRateLimitRetries times. A fault would make Silo discard the whole
+	// traversal and start again from the first page, which on a large
+	// library would hit the same limit forever.
+	maxInPlaceWait      = 65 * time.Second
+	maxRateLimitRetries = 2
 )
 
-// apiClient talks to the PunchPlay Platform API. One client serves every RPC.
+// apiClient talks to the PunchPlay Platform API. One client serves every RPC,
+// so its limiters see every request an account makes.
 type apiClient struct {
 	http        *http.Client
 	userAgent   string
 	maxResponse int64
+	limits      *accountLimiters
+	// sleep waits out a rate limit; tests replace it.
+	sleep func(context.Context, time.Duration) error
 }
 
 func newAPIClient(httpClient *http.Client, version string) *apiClient {
@@ -46,7 +57,13 @@ func newAPIClient(httpClient *http.Client, version string) *apiClient {
 	if strings.TrimSpace(version) != "" {
 		agent += "/" + strings.TrimSpace(version)
 	}
-	return &apiClient{http: httpClient, userAgent: agent, maxResponse: maxResponseBytes}
+	return &apiClient{
+		http:        httpClient,
+		userAgent:   agent,
+		maxResponse: maxResponseBytes,
+		limits:      newAccountLimiters(defaultPaces),
+		sleep:       sleepContext,
+	}
 }
 
 // account is what one RPC talks to PunchPlay with: the server, the app the
@@ -78,14 +95,52 @@ func (r response) ok() bool { return r.status >= 200 && r.status < 300 }
 // It returns a fault only when PunchPlay could not be reached or answered
 // unreadably; an error status is returned in response for the caller to
 // interpret, because some (authorization_pending, 409) are expected answers.
-func (c *apiClient) request(ctx context.Context, acct account, method, path string, headers map[string]string, payload, out any) (response, *pluginv1.WatchSyncFault) {
-	var body io.Reader
+//
+// Requests are paced per account and class. A 429 is retried in place when
+// its Retry-After fits before the call's deadline; otherwise the 429 is
+// returned for the caller to turn into a RATE_LIMITED fault.
+func (c *apiClient) request(ctx context.Context, acct account, class requestClass, method, path string, headers map[string]string, payload, out any) (response, *pluginv1.WatchSyncFault) {
+	var body []byte
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
 		if err != nil {
 			return response{}, permanentFault("PunchPlay request could not be encoded")
 		}
-		body = bytes.NewReader(encoded)
+		body = encoded
+	}
+	for attempt := 0; ; attempt++ {
+		if class != classAuth {
+			if err := c.limits.Wait(ctx, acct.token, class); err != nil {
+				if ctx.Err() != nil {
+					return response{}, temporaryFault("PunchPlay did not answer within the sync time limit")
+				}
+				// The next request slot lies past the call's deadline. Nothing
+				// was sent, so Silo can retry the work shortly.
+				return response{}, rateLimitedFault(c.limits.interval(class))
+			}
+		}
+		resp, fault := c.send(ctx, acct, method, path, headers, body, out)
+		if fault != nil || resp.status != http.StatusTooManyRequests || class == classAuth || attempt >= maxRateLimitRetries {
+			return resp, fault
+		}
+		wait := retryAfter(resp.header, time.Now())
+		if wait > maxInPlaceWait {
+			return resp, nil
+		}
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= wait+time.Second {
+			return resp, nil
+		}
+		if err := c.sleep(ctx, wait); err != nil {
+			return resp, nil
+		}
+	}
+}
+
+// send performs one HTTP attempt.
+func (c *apiClient) send(ctx context.Context, acct account, method, path string, headers map[string]string, payload []byte, out any) (response, *pluginv1.WatchSyncFault) {
+	var body io.Reader
+	if payload != nil {
+		body = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, acct.baseURL+platformPrefix+path, body)
 	if err != nil {
@@ -135,8 +190,8 @@ func (c *apiClient) request(ctx context.Context, acct account, method, path stri
 }
 
 // call is request for callers that treat every error status as a fault.
-func (c *apiClient) call(ctx context.Context, acct account, method, path string, headers map[string]string, payload, out any) (response, *pluginv1.WatchSyncFault) {
-	resp, fault := c.request(ctx, acct, method, path, headers, payload, out)
+func (c *apiClient) call(ctx context.Context, acct account, class requestClass, method, path string, headers map[string]string, payload, out any) (response, *pluginv1.WatchSyncFault) {
+	resp, fault := c.request(ctx, acct, class, method, path, headers, payload, out)
 	if fault != nil {
 		return resp, fault
 	}

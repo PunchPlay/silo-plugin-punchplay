@@ -102,31 +102,31 @@ func titleYear(media *pluginv1.WatchSyncMedia) int32 {
 // record is one PunchPlay sync record, as the snapshot and changes feeds
 // return it. Only the fields the plugin reads are listed.
 type record struct {
-	ID           *int64   `json:"id"`
-	Type         *string  `json:"type"`
-	Kind         *string  `json:"kind"`
-	Scope        *string  `json:"scope"`
-	MediaSource  *string  `json:"mediaSource"`
-	SourceID     *int64   `json:"sourceId"`
-	TmdbID       *int64   `json:"tmdbId"`
-	ShowSourceID *int64   `json:"showSourceId"`
-	ShowTmdbID   *int64   `json:"showTmdbId"`
-	Title        *string  `json:"title"`
-	Year         *int64   `json:"year"`
-	Season       *int64   `json:"season"`
-	Episode      *int64   `json:"episode"`
-	EpisodeTitle *string  `json:"episodeTitle"`
-	WatchedAt    *string  `json:"watchedAt"`
-	UpdatedAt    *string  `json:"updatedAt"`
-	AddedAt      *string  `json:"addedAt"`
-	ClientItemID *string  `json:"clientItemId"`
-	Rating       *float64 `json:"rating"`
-	IsFavourite  *bool    `json:"isFavourite"`
-	ShowStatus   *string  `json:"showStatus"`
-	ListID       *int64   `json:"listId"`
-	IsWatchlist  *bool    `json:"isWatchlist"`
+	ID           *int64   `json:"id,omitempty"`
+	Type         *string  `json:"type,omitempty"`
+	Kind         *string  `json:"kind,omitempty"`
+	Scope        *string  `json:"scope,omitempty"`
+	MediaSource  *string  `json:"mediaSource,omitempty"`
+	SourceID     *int64   `json:"sourceId,omitempty"`
+	TmdbID       *int64   `json:"tmdbId,omitempty"`
+	ShowSourceID *int64   `json:"showSourceId,omitempty"`
+	ShowTmdbID   *int64   `json:"showTmdbId,omitempty"`
+	Title        *string  `json:"title,omitempty"`
+	Year         *int64   `json:"year,omitempty"`
+	Season       *int64   `json:"season,omitempty"`
+	Episode      *int64   `json:"episode,omitempty"`
+	EpisodeTitle *string  `json:"episodeTitle,omitempty"`
+	WatchedAt    *string  `json:"watchedAt,omitempty"`
+	UpdatedAt    *string  `json:"updatedAt,omitempty"`
+	AddedAt      *string  `json:"addedAt,omitempty"`
+	ClientItemID *string  `json:"clientItemId,omitempty"`
+	Rating       *float64 `json:"rating,omitempty"`
+	IsFavourite  *bool    `json:"isFavourite,omitempty"`
+	ShowStatus   *string  `json:"showStatus,omitempty"`
+	ListID       *int64   `json:"listId,omitempty"`
+	IsWatchlist  *bool    `json:"isWatchlist,omitempty"`
 	// Playback only.
-	ProgressPercent *float64 `json:"progressPercent"`
+	ProgressPercent *float64 `json:"progressPercent,omitempty"`
 }
 
 func str(value *string) string {

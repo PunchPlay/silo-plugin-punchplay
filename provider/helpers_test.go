@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -92,9 +93,19 @@ func apiErrorReply(status int, code string) http.HandlerFunc {
 
 var fixedNow = time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
 
+// testPaces lets tests run at full speed; pacing has its own tests.
+var testPaces = map[requestClass]pace{
+	classRead:     {every: time.Microsecond, burst: 1000},
+	classWrite:    {every: time.Microsecond, burst: 1000},
+	classBulk:     {every: time.Microsecond, burst: 1000},
+	classPlayback: {every: time.Microsecond, burst: 1000},
+}
+
 func newTestServer(api *fakeAPI) *Server {
 	server := NewServer(api.server.Client(), "test")
 	server.now = func() time.Time { return fixedNow }
+	server.api.limits = newAccountLimiters(testPaces)
+	server.api.sleep = func(context.Context, time.Duration) error { return nil }
 	return server
 }
 

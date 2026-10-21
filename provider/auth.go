@@ -69,7 +69,7 @@ func (d *deviceAuthServer) Start(ctx context.Context, req *pluginv1.WatchSyncDev
 	defer cancel()
 	acct := account{baseURL: configured.baseURL, clientID: configured.clientID}
 	var answer deviceCodeResponse
-	resp, fault := d.server.api.request(ctx, acct, http.MethodPost, "/auth/device/code", nil, map[string]any{
+	resp, fault := d.server.api.request(ctx, acct, classAuth, http.MethodPost, "/auth/device/code", nil, map[string]any{
 		"client_id": configured.clientID,
 		"scope":     strings.Join(requestedScopes, " "),
 	}, &answer)
@@ -141,7 +141,7 @@ func (d *deviceAuthServer) Poll(ctx context.Context, req *pluginv1.WatchSyncDevi
 	defer cancel()
 	acct := account{baseURL: baseURL, clientID: state.ClientID}
 	var token tokenResponse
-	resp, fault := d.server.api.request(ctx, acct, http.MethodPost, "/auth/device/token", nil, map[string]any{
+	resp, fault := d.server.api.request(ctx, acct, classAuth, http.MethodPost, "/auth/device/token", nil, map[string]any{
 		"client_id":   state.ClientID,
 		"device_code": state.DeviceCode,
 		"device_name": deviceName,
@@ -211,7 +211,7 @@ func (s *Server) refresh(ctx context.Context, acct account, refreshToken string)
 		}
 	}
 	var token tokenResponse
-	resp, fault := s.api.request(ctx, account{baseURL: acct.baseURL, clientID: acct.clientID}, http.MethodPost, "/auth/refresh", nil, map[string]any{
+	resp, fault := s.api.request(ctx, account{baseURL: acct.baseURL, clientID: acct.clientID}, classAuth, http.MethodPost, "/auth/refresh", nil, map[string]any{
 		"client_id":     acct.clientID,
 		"refresh_token": refreshToken,
 	}, &token)
@@ -275,7 +275,7 @@ type meResponse struct {
 // stable user ID; usernames can change.
 func (s *Server) lookupAccount(ctx context.Context, acct account) (*pluginv1.WatchSyncAccount, *pluginv1.WatchSyncFault) {
 	var me meResponse
-	if _, fault := s.api.call(ctx, acct, http.MethodGet, "/me", nil, nil, &me); fault != nil {
+	if _, fault := s.api.call(ctx, acct, classRead, http.MethodGet, "/me", nil, nil, &me); fault != nil {
 		return nil, fault
 	}
 	if strings.TrimSpace(me.ID) == "" {
