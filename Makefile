@@ -1,4 +1,4 @@
-.PHONY: build build-all clean lint test
+.PHONY: audit build build-all clean lint test
 
 BINARY=plugin
 PLATFORMS=linux/amd64 linux/arm64 darwin/arm64
@@ -20,6 +20,9 @@ test:
 
 lint:
 	golangci-lint run ./...
+
+audit:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
 clean:
 	rm -f $(BINARY)

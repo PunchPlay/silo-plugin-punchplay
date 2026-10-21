@@ -56,6 +56,7 @@ The plugin is stateless. Silo keeps the credentials, cursors and retry queue; ea
 
 ```bash
 go test -race ./...
+make audit        # govulncheck: known vulnerabilities in reachable code
 make build        # ./plugin for this machine
 make build-all    # dist/ for every release platform
 go run . manifest # print the manifest with this binary's checksum
