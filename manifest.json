@@ -1,40 +1,12 @@
 {
   "plugin_id": "tv.punchplay.watchprovider",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "checksum": "__CHECKSUM__",
   "silo_api_version": "v1",
   "supported_platforms": [
     { "os": "darwin", "arch": "arm64" },
     { "os": "linux", "arch": "amd64" },
     { "os": "linux", "arch": "arm64" }
-  ],
-  "global_config_schema": [
-    {
-      "key": "api",
-      "title": "PunchPlay API (advanced)",
-      "description": "Leave both fields empty to use PunchPlay's own Silo app at punchplay.tv. Only change them to test against another PunchPlay server.",
-      "json_schema": "{\"type\":\"object\",\"properties\":{\"client_id\":{\"type\":\"string\"},\"base_url\":{\"type\":\"string\"}},\"additionalProperties\":false}",
-      "required": false,
-      "admin_form": {
-        "submit_label": "Save PunchPlay API settings",
-        "fields": [
-          {
-            "key": "client_id",
-            "label": "Client ID",
-            "description": "Optional. The client ID of a public device app registered on the PunchPlay server below. Profiles connected through one client ID stop working if it changes.",
-            "control": "ADMIN_FORM_CONTROL_TEXT",
-            "required": false
-          },
-          {
-            "key": "base_url",
-            "label": "API base URL",
-            "description": "Optional. Defaults to https://punchplay.tv.",
-            "control": "ADMIN_FORM_CONTROL_TEXT",
-            "required": false
-          }
-        ]
-      }
-    }
   ],
   "capabilities": [
     {

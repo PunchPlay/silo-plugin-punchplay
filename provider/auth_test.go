@@ -23,8 +23,7 @@ func startDeviceFlow(t *testing.T, api *fakeAPI, server *Server) *pluginv1.Watch
 		"expires_in":                600,
 	}))
 	start, err := server.DeviceAuthorization().Start(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServiceStartRequest{
-		CapabilityId:   capabilityID,
-		ProviderConfig: providerConfig(api),
+		CapabilityId: capabilityID,
 	})
 	if err != nil || start.GetFault() != nil {
 		t.Fatalf("start = %v, %v", start.GetFault(), err)
@@ -62,31 +61,64 @@ func TestStartAsksForEveryScopeWithThePublicClient(t *testing.T) {
 	}
 }
 
-func TestStartUsesTheBuiltInClientByDefault(t *testing.T) {
+func TestNewServerSignsInAtPunchPlayWithTheBuiltInClient(t *testing.T) {
+	server := NewServer(nil, "test")
+	want := settings{baseURL: "https://punchplay.tv", clientID: "ppc_2819963afd1e2e8b17132d55"}
+	if server.signInFault != nil || server.signIn != want {
+		t.Fatalf("sign-in = %+v, %v", server.signIn, server.signInFault)
+	}
+}
+
+func TestStartIgnoresSettingsFromEarlierVersions(t *testing.T) {
+	// Before 0.1.3 the plugin had API settings, and Silo may still send them.
+	api := newFakeAPI(t)
+	server := newTestServer(api)
+	startDeviceFlow(t, api, server)
+	start, _ := server.DeviceAuthorization().Start(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServiceStartRequest{
+		CapabilityId: capabilityID,
+		ProviderConfig: &pluginv1.WatchSyncProviderConfig{Values: map[string]string{
+			"api.base_url":  "https://elsewhere.example",
+			"api.client_id": "ppc_other",
+		}},
+	})
+	if start.GetFault() != nil || len(api.recorded()) != 2 || api.recorded()[1].body["client_id"] != "ppc_test" {
+		t.Fatalf("start = %v after %d requests", start.GetFault(), len(api.recorded()))
+	}
+}
+
+func TestStartReportsAnUnknownClient(t *testing.T) {
 	api := newFakeAPI(t)
 	server := newTestServer(api)
 	api.handle("POST /auth/device/code", apiErrorReply(http.StatusUnauthorized, "invalid_client"))
 	start, _ := server.DeviceAuthorization().Start(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServiceStartRequest{
 		CapabilityId: capabilityID,
-		ProviderConfig: &pluginv1.WatchSyncProviderConfig{Values: map[string]string{
-			configBaseURL: api.server.URL,
-		}},
 	})
-	if api.recorded()[0].body["client_id"] != defaultClientID {
-		t.Fatalf("client_id = %v, want the built-in one", api.recorded()[0].body["client_id"])
-	}
 	if start.GetFault().GetCode() != pluginv1.WatchSyncFaultCode_WATCH_SYNC_FAULT_CODE_PERMISSION_DENIED {
 		t.Fatalf("fault = %v, want permission denied for an unknown client", start.GetFault())
 	}
 }
 
-func TestStartRefusesAPlainHTTPServer(t *testing.T) {
+func TestBuiltInSettingsAcceptOnlyHTTPSOrThisMachine(t *testing.T) {
+	if local, fault := builtInSettings("http://localhost:3000/", " ppc_dev "); fault != nil ||
+		local != (settings{baseURL: "http://localhost:3000", clientID: "ppc_dev"}) {
+		t.Fatalf("local = %+v, %v", local, fault)
+	}
+	for _, tc := range []struct{ baseURL, clientID string }{
+		{"http://punchplay.example", "ppc_dev"},
+		{"https://punchplay.tv", " "},
+	} {
+		if _, fault := builtInSettings(tc.baseURL, tc.clientID); fault.GetCode() != pluginv1.WatchSyncFaultCode_WATCH_SYNC_FAULT_CODE_PERMANENT {
+			t.Fatalf("%+v: fault = %v", tc, fault)
+		}
+	}
+
+	// A build like that cannot start a sign-in, and says why.
 	server := NewServer(nil, "test")
+	server.signIn, server.signInFault = builtInSettings("http://punchplay.example", "ppc_dev")
 	start, _ := server.DeviceAuthorization().Start(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServiceStartRequest{
-		CapabilityId:   capabilityID,
-		ProviderConfig: &pluginv1.WatchSyncProviderConfig{Values: map[string]string{configBaseURL: "http://punchplay.example"}},
+		CapabilityId: capabilityID,
 	})
-	if start.GetFault().GetCode() != pluginv1.WatchSyncFaultCode_WATCH_SYNC_FAULT_CODE_PERMISSION_DENIED {
+	if start.GetFault().GetCode() != pluginv1.WatchSyncFaultCode_WATCH_SYNC_FAULT_CODE_PERMANENT {
 		t.Fatalf("fault = %v", start.GetFault())
 	}
 }
@@ -108,7 +140,7 @@ func TestPollMapsEveryAnswer(t *testing.T) {
 			start := startDeviceFlow(t, api, server)
 			api.handle("POST /auth/device/token", tc.reply)
 			poll, _ := server.DeviceAuthorization().Poll(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServicePollRequest{
-				CapabilityId: capabilityID, ProviderConfig: providerConfig(api), ProviderState: start.GetProviderState(),
+				CapabilityId: capabilityID, ProviderState: start.GetProviderState(),
 			})
 			if poll.GetStatus() != tc.status {
 				t.Fatalf("status = %v, want %v (fault %v)", poll.GetStatus(), tc.status, poll.GetFault())
@@ -126,7 +158,7 @@ func TestPollSlowsDownWhenRateLimited(t *testing.T) {
 		writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "rate_limited"})
 	})
 	poll, _ := server.DeviceAuthorization().Poll(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServicePollRequest{
-		CapabilityId: capabilityID, ProviderConfig: providerConfig(api), ProviderState: start.GetProviderState(),
+		CapabilityId: capabilityID, ProviderState: start.GetProviderState(),
 	})
 	if poll.GetStatus() != pluginv1.WatchSyncDeviceAuthorizationStatus_WATCH_SYNC_DEVICE_AUTHORIZATION_STATUS_PENDING ||
 		poll.GetPollingInterval().AsDuration() != 30*time.Second || poll.ProviderState == nil {
@@ -143,7 +175,7 @@ func TestPollReturnsCredentialsThatRecordTheIssuer(t *testing.T) {
 		"expires_in": 3600, "scope": "profile:read history:write",
 	}))
 	poll, _ := server.DeviceAuthorization().Poll(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServicePollRequest{
-		CapabilityId: capabilityID, ProviderConfig: providerConfig(api), ProviderState: start.GetProviderState(),
+		CapabilityId: capabilityID, ProviderState: start.GetProviderState(),
 	})
 	credentials := poll.GetCredentials()
 	if poll.GetStatus() != pluginv1.WatchSyncDeviceAuthorizationStatus_WATCH_SYNC_DEVICE_AUTHORIZATION_STATUS_AUTHORIZED ||
@@ -165,7 +197,7 @@ func TestPollAfterExpiryDoesNotCallPunchPlay(t *testing.T) {
 	start := startDeviceFlow(t, api, server)
 	server.now = func() time.Time { return fixedNow.Add(11 * time.Minute) }
 	poll, _ := server.DeviceAuthorization().Poll(context.Background(), &pluginv1.WatchSyncDeviceAuthorizationServicePollRequest{
-		CapabilityId: capabilityID, ProviderConfig: providerConfig(api), ProviderState: start.GetProviderState(),
+		CapabilityId: capabilityID, ProviderState: start.GetProviderState(),
 	})
 	if poll.GetStatus() != pluginv1.WatchSyncDeviceAuthorizationStatus_WATCH_SYNC_DEVICE_AUTHORIZATION_STATUS_EXPIRED || len(api.recorded()) != 1 {
 		t.Fatalf("poll = %v after %d requests", poll, len(api.recorded()))
@@ -179,8 +211,8 @@ func TestRefreshRotatesTokensWithTheIssuingClient(t *testing.T) {
 		"access_token": "rotated-access", "refresh_token": "rotated-refresh", "token_type": "bearer", "expires_in": 3600,
 	}))
 	ctx := testContext(api)
-	// An admin pointing new connections elsewhere must not move this one.
-	ctx.ProviderConfig = &pluginv1.WatchSyncProviderConfig{Values: map[string]string{configClientID: "ppc_other"}}
+	// A release with another built-in client must not move this connection.
+	server.signIn.clientID = "ppc_other"
 	ctx.Credentials.AccessToken = ""
 	refreshed, _ := server.RefreshCredentials(context.Background(), &pluginv1.WatchSyncRefreshCredentialsRequest{Context: ctx})
 	if refreshed.GetFault() != nil || refreshed.GetCredentials().GetRefreshToken() != "rotated-refresh" {

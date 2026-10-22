@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	defaultBaseURL        = "https://punchplay.tv"
 	platformPrefix        = "/api/platform/v1"
 	defaultRequestTimeout = 20 * time.Second
 	// A page is at most 100 sync records; the cap only guards against an

@@ -63,7 +63,13 @@ make build-all    # dist/ for every release platform
 go run . manifest # print the manifest with this binary's checksum
 ```
 
-To test against a local PunchPlay, set the plugin's advanced settings in Silo: **API base URL** (for example `http://localhost:3000`; plain http is accepted only for this machine) and **Client ID** of a public device app registered there.
+Released builds always sign in at punchplay.tv. To test against a local PunchPlay, build with its address and the client ID of a public device app registered there; plain http is accepted only for this machine:
+
+```bash
+make build PUNCHPLAY_BASE_URL=http://localhost:3000 PUNCHPLAY_CLIENT_ID=ppc_...
+```
+
+Connections remember the server and app that signed them in, so a development build and a released one can't mix up each other's tokens.
 
 ## Releases
 

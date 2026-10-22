@@ -16,22 +16,24 @@ import (
 const (
 	capabilityID = "punchplay"
 
-	// defaultClientID is PunchPlay's public device app for Silo. It has no
-	// secret, so it is safe to ship in the binary.
-	defaultClientID = "ppc_2819963afd1e2e8b17132d55"
-
-	configClientID = "api.client_id"
-	configBaseURL  = "api.base_url"
-
 	// Credentials record the app and server that issued them, because the
-	// tokens only work there. A later change to the plugin settings then
-	// applies to new connections without breaking existing ones.
+	// tokens only work there. A release that changes either then applies to
+	// new connections without breaking existing ones.
 	attributeClientID = "client_id"
 	attributeBaseURL  = "base_url"
 
 	// The host cancels every RPC after two minutes. Upstream work stops this
 	// long before that, so the plugin can still answer with a fault.
 	rpcDeadlineMargin = 5 * time.Second
+)
+
+// New connections sign in at punchplay.tv through PunchPlay's public device
+// app for Silo, which has no secret, so it is safe to ship in the binary.
+// These are variables so a development build can point at a local PunchPlay
+// with -ldflags -X; see the README.
+var (
+	defaultBaseURL  = "https://punchplay.tv"
+	defaultClientID = "ppc_2819963afd1e2e8b17132d55"
 )
 
 // requestedScopes is everything the plugin reads and writes.
@@ -53,13 +55,19 @@ type Server struct {
 	pluginv1.UnimplementedWatchSyncProviderServer
 	api *apiClient
 	now func() time.Time
+	// signIn is where new connections sign in. signInFault is set instead
+	// when this build's address or client ID is unusable.
+	signIn      settings
+	signInFault *pluginv1.WatchSyncFault
 }
 
 // NewServer returns a PunchPlay provider that sends requests with httpClient,
 // or with a 20-second request timeout when httpClient is nil. version goes in
 // the User-Agent.
 func NewServer(httpClient *http.Client, version string) *Server {
-	return &Server{api: newAPIClient(httpClient, version), now: time.Now}
+	server := &Server{api: newAPIClient(httpClient, version), now: time.Now}
+	server.signIn, server.signInFault = builtInSettings(defaultBaseURL, defaultClientID)
+	return server
 }
 
 // DeviceAuthorization returns the WatchSyncDeviceAuthorizationService for
@@ -74,36 +82,34 @@ type settings struct {
 	clientID string
 }
 
-func configuredSettings(capability string, config *pluginv1.WatchSyncProviderConfig) (settings, *pluginv1.WatchSyncFault) {
-	if capability != capabilityID {
-		return settings{}, invalidRequestFault("Unknown PunchPlay capability")
-	}
-	baseURL, err := normalizeBaseURL(configValue(config, configBaseURL))
-	if err != nil {
-		return settings{}, permissionDeniedFault("The PunchPlay API base URL in the plugin settings must be an https address")
-	}
-	clientID := configValue(config, configClientID)
-	if clientID == "" {
-		clientID = defaultClientID
+func builtInSettings(rawBaseURL, clientID string) (settings, *pluginv1.WatchSyncFault) {
+	baseURL, err := normalizeBaseURL(rawBaseURL)
+	clientID = strings.TrimSpace(clientID)
+	if err != nil || clientID == "" {
+		return settings{}, permanentFault("This build of the PunchPlay plugin has an invalid API address or client ID")
 	}
 	return settings{baseURL: baseURL, clientID: clientID}, nil
 }
 
-func configValue(config *pluginv1.WatchSyncProviderConfig, key string) string {
-	if value := strings.TrimSpace(config.GetValues()[key]); value != "" {
-		return value
+// settingsFor returns where new connections for capability sign in.
+func (s *Server) settingsFor(capability string) (settings, *pluginv1.WatchSyncFault) {
+	if capability != capabilityID {
+		return settings{}, invalidRequestFault("Unknown PunchPlay capability")
 	}
-	return strings.TrimSpace(config.GetSecretValues()[key])
+	if s.signInFault != nil {
+		return settings{}, s.signInFault
+	}
+	return s.signIn, nil
 }
 
 // authenticate pairs the profile's access token with the server and app that
 // issued it.
 func (s *Server) authenticate(auth *pluginv1.WatchSyncAuthenticatedContext) (account, *pluginv1.WatchSyncFault) {
-	configured, fault := configuredSettings(auth.GetCapabilityId(), auth.GetProviderConfig())
+	signIn, fault := s.settingsFor(auth.GetCapabilityId())
 	if fault != nil {
 		return account{}, fault
 	}
-	acct := issuedBy(configured, auth.GetCredentials())
+	acct := issuedBy(signIn, auth.GetCredentials())
 	if acct.token == "" {
 		return account{}, &pluginv1.WatchSyncFault{
 			Code:        pluginv1.WatchSyncFaultCode_WATCH_SYNC_FAULT_CODE_INVALID_CREDENTIAL,
@@ -114,11 +120,11 @@ func (s *Server) authenticate(auth *pluginv1.WatchSyncAuthenticatedContext) (acc
 }
 
 // issuedBy returns the server and app recorded with credentials, falling back
-// to the configured ones for credentials that recorded neither.
-func issuedBy(configured settings, credentials *pluginv1.WatchSyncCredentials) account {
+// to this build's for credentials that recorded neither.
+func issuedBy(signIn settings, credentials *pluginv1.WatchSyncCredentials) account {
 	acct := account{
-		baseURL:  configured.baseURL,
-		clientID: configured.clientID,
+		baseURL:  signIn.baseURL,
+		clientID: signIn.clientID,
 		token:    strings.TrimSpace(credentials.GetAccessToken()),
 	}
 	attributes := credentials.GetSecretAttributes()
@@ -134,13 +140,13 @@ func issuedBy(configured settings, credentials *pluginv1.WatchSyncCredentials) a
 }
 
 func (s *Server) RefreshCredentials(ctx context.Context, req *pluginv1.WatchSyncRefreshCredentialsRequest) (*pluginv1.WatchSyncCredentialResponse, error) {
-	configured, fault := configuredSettings(req.GetContext().GetCapabilityId(), req.GetContext().GetProviderConfig())
+	signIn, fault := s.settingsFor(req.GetContext().GetCapabilityId())
 	if fault != nil {
 		return &pluginv1.WatchSyncCredentialResponse{Fault: fault}, nil
 	}
 	// An expired or missing access token is fine here: the refresh token is
 	// what counts.
-	acct := issuedBy(configured, req.GetContext().GetCredentials())
+	acct := issuedBy(signIn, req.GetContext().GetCredentials())
 	ctx, cancel := withRPCDeadline(ctx)
 	defer cancel()
 	credentials, fault := s.refresh(ctx, acct, req.GetContext().GetCredentials().GetRefreshToken())

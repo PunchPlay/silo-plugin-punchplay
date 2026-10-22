@@ -34,7 +34,7 @@ type deviceAuthServer struct {
 }
 
 // signInState is the provider_state the host keeps between polls. It records
-// the server and app so a settings change mid sign-in cannot split them.
+// the server and app so a plugin update mid sign-in cannot split them.
 type signInState struct {
 	DeviceCode      string    `json:"device_code"`
 	IntervalSeconds int       `json:"interval_seconds"`
@@ -61,16 +61,16 @@ type tokenResponse struct {
 }
 
 func (d *deviceAuthServer) Start(ctx context.Context, req *pluginv1.WatchSyncDeviceAuthorizationServiceStartRequest) (*pluginv1.WatchSyncDeviceAuthorizationServiceStartResponse, error) {
-	configured, fault := configuredSettings(req.GetCapabilityId(), req.GetProviderConfig())
+	signIn, fault := d.server.settingsFor(req.GetCapabilityId())
 	if fault != nil {
 		return &pluginv1.WatchSyncDeviceAuthorizationServiceStartResponse{Fault: fault}, nil
 	}
 	ctx, cancel := withRPCDeadline(ctx)
 	defer cancel()
-	acct := account{baseURL: configured.baseURL, clientID: configured.clientID}
+	acct := account{baseURL: signIn.baseURL, clientID: signIn.clientID}
 	var answer deviceCodeResponse
 	resp, fault := d.server.api.request(ctx, acct, classAuth, http.MethodPost, "/auth/device/code", nil, map[string]any{
-		"client_id": configured.clientID,
+		"client_id": signIn.clientID,
 		"scope":     strings.Join(requestedScopes, " "),
 	}, &answer)
 	switch {
@@ -78,7 +78,7 @@ func (d *deviceAuthServer) Start(ctx context.Context, req *pluginv1.WatchSyncDev
 		return &pluginv1.WatchSyncDeviceAuthorizationServiceStartResponse{Fault: fault}, nil
 	case resp.status == http.StatusUnauthorized || resp.code == "invalid_client":
 		return &pluginv1.WatchSyncDeviceAuthorizationServiceStartResponse{
-			Fault: permissionDeniedFault("PunchPlay does not recognise the plugin's client ID; clear the Client ID in the plugin settings (" + describe(resp) + ")"),
+			Fault: permissionDeniedFault("PunchPlay does not recognise this plugin's client ID; update the plugin (" + describe(resp) + ")"),
 		}, nil
 	case resp.code == "invalid_scope":
 		return &pluginv1.WatchSyncDeviceAuthorizationServiceStartResponse{
@@ -101,8 +101,8 @@ func (d *deviceAuthServer) Start(ctx context.Context, req *pluginv1.WatchSyncDev
 		DeviceCode:      answer.DeviceCode,
 		IntervalSeconds: int(interval / time.Second),
 		ExpiresAt:       expiresAt,
-		ClientID:        configured.clientID,
-		BaseURL:         configured.baseURL,
+		ClientID:        signIn.clientID,
+		BaseURL:         signIn.baseURL,
 	})
 	if err != nil {
 		return &pluginv1.WatchSyncDeviceAuthorizationServiceStartResponse{Fault: permanentFault("PunchPlay sign-in state could not be encoded")}, nil
@@ -118,7 +118,7 @@ func (d *deviceAuthServer) Start(ctx context.Context, req *pluginv1.WatchSyncDev
 }
 
 func (d *deviceAuthServer) Poll(ctx context.Context, req *pluginv1.WatchSyncDeviceAuthorizationServicePollRequest) (*pluginv1.WatchSyncDeviceAuthorizationServicePollResponse, error) {
-	if _, fault := configuredSettings(req.GetCapabilityId(), req.GetProviderConfig()); fault != nil {
+	if _, fault := d.server.settingsFor(req.GetCapabilityId()); fault != nil {
 		return &pluginv1.WatchSyncDeviceAuthorizationServicePollResponse{Fault: fault}, nil
 	}
 	var state signInState

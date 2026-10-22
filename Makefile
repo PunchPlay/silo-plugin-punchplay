@@ -3,7 +3,17 @@
 BINARY=plugin
 PLATFORMS=linux/amd64 linux/arm64 darwin/arm64
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed 's/^v//')
+MODULE=$(shell go list -m)
 LDFLAGS=-s -w -X main.version=$(VERSION)
+
+# A development build can sign in to a local PunchPlay instead of punchplay.tv:
+#   make build PUNCHPLAY_BASE_URL=http://localhost:3000 PUNCHPLAY_CLIENT_ID=ppc_...
+ifdef PUNCHPLAY_BASE_URL
+LDFLAGS+= -X $(MODULE)/provider.defaultBaseURL=$(PUNCHPLAY_BASE_URL)
+endif
+ifdef PUNCHPLAY_CLIENT_ID
+LDFLAGS+= -X $(MODULE)/provider.defaultClientID=$(PUNCHPLAY_CLIENT_ID)
+endif
 
 build:
 	go build -trimpath -ldflags="$(LDFLAGS)" -o $(BINARY) .

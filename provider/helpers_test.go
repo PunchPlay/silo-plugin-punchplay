@@ -106,14 +106,14 @@ func newTestServer(api *fakeAPI) *Server {
 	server.now = func() time.Time { return fixedNow }
 	server.api.limits = newAccountLimiters(testPaces)
 	server.api.sleep = func(context.Context, time.Duration) error { return nil }
+	server.signIn = settings{baseURL: api.server.URL, clientID: "ppc_test"}
 	return server
 }
 
 // testContext is an authenticated context pointing at the fake API.
 func testContext(api *fakeAPI) *pluginv1.WatchSyncAuthenticatedContext {
 	return &pluginv1.WatchSyncAuthenticatedContext{
-		CapabilityId:   capabilityID,
-		ProviderConfig: providerConfig(api),
+		CapabilityId: capabilityID,
 		Credentials: &pluginv1.WatchSyncCredentials{
 			AccessToken:  "access-token",
 			RefreshToken: strings.Repeat("b", 64),
@@ -123,13 +123,6 @@ func testContext(api *fakeAPI) *pluginv1.WatchSyncAuthenticatedContext {
 			},
 		},
 	}
-}
-
-func providerConfig(api *fakeAPI) *pluginv1.WatchSyncProviderConfig {
-	return &pluginv1.WatchSyncProviderConfig{Values: map[string]string{
-		configBaseURL:  api.server.URL,
-		configClientID: "ppc_test",
-	}}
 }
 
 func movie(tmdb string) *pluginv1.WatchSyncMedia {
