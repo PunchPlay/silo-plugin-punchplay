@@ -271,6 +271,26 @@ func TestScrobbleStopUsesSilosCompletion(t *testing.T) {
 	}
 }
 
+func TestScrobbleResumeIsNotAReplayOfTheFirstStart(t *testing.T) {
+	api := newFakeAPI(t)
+	server := newTestServer(api)
+	api.handle("POST /playback/start", jsonReply(http.StatusOK, map[string]any{"ok": true}))
+	// Silo reuses the start's event ID when playback resumes.
+	first := event("scrobble:START:session-9", opStart, movie("603"))
+	first.OccurredAt = timestamppb.New(fixedNow.Add(-5 * time.Minute))
+	resume := event("scrobble:START:session-9", opStart, movie("603"))
+	apply(t, server, api, first)
+	apply(t, server, api, resume)
+	apply(t, server, api, resume)
+	ids := []any{}
+	for _, request := range api.recorded() {
+		ids = append(ids, request.body["event_id"])
+	}
+	if len(ids) != 3 || ids[0] == ids[1] || ids[1] != ids[2] {
+		t.Fatalf("event IDs = %v, want the resume to differ from the first start and a retry to repeat it", ids)
+	}
+}
+
 func TestScrobbleReplaysAndStaleEventsChangeNothing(t *testing.T) {
 	api := newFakeAPI(t)
 	server := newTestServer(api)

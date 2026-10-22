@@ -466,9 +466,16 @@ func (s *Server) scrobble(ctx context.Context, acct account, event *pluginv1.Wat
 	if action != "stop" && s.now().Sub(occurredAt) > staleLiveEvent {
 		return noChange(id), nil
 	}
+	// Silo gives a resume the same event ID as the session's first start, so
+	// PunchPlay would drop it as a replay and leave the session paused. The
+	// time Silo recorded the start tells them apart and stays fixed on retry.
+	receiptID := id
+	if action == "start" {
+		receiptID = id + "@" + strconv.FormatInt(occurredAt.UnixMilli(), 10)
+	}
 
 	payload := map[string]any{
-		"event_id":            itemKey("silo:", id),
+		"event_id":            itemKey("silo:", receiptID),
 		"playback_session_id": playbackSession(event),
 		"event_created_at":    occurredAt.UnixMilli(),
 		"position_seconds":    max(event.GetPositionSeconds(), 0),
