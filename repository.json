@@ -3,7 +3,7 @@
     {
       "manifest": {
         "plugin_id": "tv.punchplay.watchprovider",
-        "version": "0.1.4",
+        "version": "0.1.5",
         "silo_api_version": "v1",
         "supported_platforms": [
           {
@@ -61,7 +61,7 @@
         "presentation": {
           "display_name": "PunchPlay Watch Provider",
           "summary": "Sync Silo watch history, ratings, watchlist, favourites and dropped shows with PunchPlay, with live scrobbling.",
-          "description_markdown": "Imports watched movies and episodes, resume progress, the Watchlist, favourites, dropped shows, and movie, series and episode ratings from PunchPlay, anime included. Exports watched and unwatched titles, every rewatch as its own play, ratings, favourites, Watchlist changes and dropped shows, and forwards live playback start, pause and stop, so PunchPlay shows what you are watching while you watch it.",
+          "description_markdown": "Imports watched movies and episodes, resume progress, the Watchlist, favourites, dropped shows, and movie, series and episode ratings from PunchPlay, anime included. Exports watched titles, every rewatch as its own play, ratings, favourites, Watchlist changes and dropped shows, and forwards live playback start, pause and stop, so PunchPlay shows what you are watching while you watch it.",
           "setup_markdown": "1. Install the plugin. No API keys are needed.\n2. Connect each Silo profile from its watch-provider settings. Silo shows a code to enter at [punchplay.tv/link](https://punchplay.tv/link).\n3. Titles PunchPlay cannot match yet are listed in PunchPlay under Settings, and are retried automatically.",
           "homepage_url": "https://punchplay.tv",
           "source_url": "https://github.com/PunchPlay/silo-plugin-punchplay",
@@ -73,16 +73,16 @@
         }
       },
       "repo_url": "https://github.com/PunchPlay/silo-plugin-punchplay",
-      "checksums_url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.4/checksums.txt",
+      "checksums_url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.5/checksums.txt",
       "binaries": {
         "darwin/arm64": {
-          "url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.4/plugin-darwin-arm64"
+          "url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.5/plugin-darwin-arm64"
         },
         "linux/amd64": {
-          "url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.4/plugin-linux-amd64"
+          "url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.5/plugin-linux-amd64"
         },
         "linux/arm64": {
-          "url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.4/plugin-linux-arm64"
+          "url": "https://github.com/PunchPlay/silo-plugin-punchplay/releases/download/v0.1.5/plugin-linux-arm64"
         }
       }
     }
