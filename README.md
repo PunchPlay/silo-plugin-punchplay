@@ -26,7 +26,7 @@ That's it. The plugin signs in through PunchPlay's own public Silo app, so nothi
 | | From PunchPlay into Silo | From Silo to PunchPlay |
 | --- | --- | --- |
 | Watched movies and episodes | Yes | Yes, every rewatch as its own play |
-| Unwatching | | Yes (moved to PunchPlay's trash, restorable) |
+| Unwatching | | Only from older Silo builds (see below) |
 | Resume progress | Yes | From live playback |
 | Live playback (start, pause, stop) | | Yes, shown as Now Playing |
 | Ratings (movies, series, episodes) | Yes | Yes |
@@ -49,7 +49,7 @@ The plugin is stateless. Silo keeps the credentials, cursors and retry queue; ea
 
 ## Known limits
 
-- Unwatching needs a TMDB ID; an episode known only by TVDB ID is rejected.
+- Silo builds since [silo-server#3013](https://github.com/Silo-Server/silo-server/pull/3013) (24 October 2026) keep watch history when something is marked unwatched, and send plugins no history removals, so unwatching in Silo leaves PunchPlay's plays alone. Older builds with **Export unwatched** on still send them: the plugin moves those plays to PunchPlay's trash, where they can be restored, and needs a TMDB ID to do it.
 - Silo sends no periodic progress during playback, so the resume point updates on pause and stop.
 - The Watchlist has no manual order on PunchPlay yet, so none is synced.
 

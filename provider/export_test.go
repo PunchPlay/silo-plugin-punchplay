@@ -271,6 +271,33 @@ func TestScrobbleStopUsesSilosCompletion(t *testing.T) {
 	}
 }
 
+func TestScrobbleNamesTheTitle(t *testing.T) {
+	// PunchPlay can't identify a playback event without a title, and uses the
+	// year to tell remakes apart. An episode is named by its show.
+	api := newFakeAPI(t)
+	server := newTestServer(api)
+	api.handle("POST /playback/start", jsonReply(http.StatusOK, map[string]any{"ok": true}))
+	apply(t, server, api,
+		event("movie-start", opStart, movie("603")),
+		event("episode-start", opStart, episode(map[string]string{"tmdb": "95396"}, 1, 2)),
+	)
+	recorded := api.recorded()
+	if len(recorded) != 2 {
+		t.Fatalf("requests = %d, want 2", len(recorded))
+	}
+	want := []map[string]any{
+		{"title": "The Matrix", "year": float64(1999)},
+		{"title": "Severance", "year": float64(2022), "episode_title": "Good News About Hell"},
+	}
+	for i, fields := range want {
+		for key, value := range fields {
+			if got := recorded[i].body[key]; got != value {
+				t.Fatalf("request %d %s = %v, want %v (body %v)", i, key, got, value, recorded[i].body)
+			}
+		}
+	}
+}
+
 func TestScrobbleResumeIsNotAReplayOfTheFirstStart(t *testing.T) {
 	api := newFakeAPI(t)
 	server := newTestServer(api)
